@@ -9,6 +9,7 @@
 #  archived_at    :datetime
 #  deleted_at     :datetime
 #  name           :text
+#  catagory       :default(general)
 #  slug           :text
 #  created_at     :datetime         not null
 #  updated_at     :datetime         not null
@@ -47,6 +48,13 @@ class Document < ApplicationRecord
   validate :ensure_file_attached
 
   scope :common, -> { where(event_id: nil) }
+
+  enum :catagories, {
+    general: 0,
+    nonprofit_status: 1,
+    tax_exception: 2,
+    forms: 3
+  }, prefix: :catagory
 
   aasm timestamps: true do
     state :active, initial: true
