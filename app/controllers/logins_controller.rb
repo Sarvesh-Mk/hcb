@@ -21,12 +21,16 @@ class LoginsController < ApplicationController
     render "users/logout" if current_user
 
     @prefill_email = params[:email] if params[:email].present?
+    @referral_program = Referral::Program.find_by_hashid(params[:referral]) if params[:referral].present?
   end
 
   # when you submit your email
   def create
     user = User.create_with(creation_method: :login).find_or_create_by!(email: params[:email])
-    login = user.logins.create
+
+    referral_program = Referral::Program.find_by_hashid(params[:referral_program_id]) if params[:referral_program_id].present?
+    login = user.logins.create(referral_program:)
+
     cookies.signed["browser_token_#{login.hashid}"] = { value: login.browser_token, expires: Login::EXPIRATION.from_now }
 
     has_webauthn_enabled = user&.webauthn_credentials&.any?
@@ -138,6 +142,12 @@ class LoginsController < ApplicationController
       else
         return redirect_to totp_login_path(@login), flash: { error: "Invalid TOTP code, please try again." }
       end
+    when "backup_code"
+      if @user.redeem_backup_code!(params[:backup_code])
+        @login.update(authenticated_with_backup_code: true)
+      else
+        return redirect_to backup_code_login_path(@login), flash: { error: "Invalid backup code, please try again." }
+      end
     end
 
     # Clear the flash - this prevents the error message showing up after an unsuccessful -> successful login
@@ -147,8 +157,12 @@ class LoginsController < ApplicationController
     # has not created a user session before
     if @login.complete? && @login.user_session.nil?
       @login.update(user_session: sign_in(user: @login.user, fingerprint_info:))
-      if @user.full_name.blank? || @user.phone_number.blank?
+      if @referral_program.present?
+        redirect_to program_path(@referral_program)
+      elsif @user.full_name.blank? || @user.phone_number.blank?
         redirect_to edit_user_path(@user.slug, return_to: params[:return_to])
+      elsif @login.authenticated_with_backup_code && @user.backup_codes.active.size == 0
+        redirect_to security_user_path(@user), flash: { warning: "You've just used your last backup code, and we recommend generating more." }
       else
         redirect_to(params[:return_to] || root_path)
       end
@@ -179,6 +193,7 @@ class LoginsController < ApplicationController
     begin
       if params[:id]
         @login = Login.incomplete.active.find_by_hashid!(params[:id])
+        @referral_program = @login.referral_program
         unless valid_browser_token?
           # error! browser token doesn't match the cookie.
           flash[:error] = "This doesn't seem to be the browser who began this login; please ensure cookies are enabled."
@@ -207,6 +222,7 @@ class LoginsController < ApplicationController
     @sms_available = @user&.phone_number_verified && !@login.authenticated_with_sms
     @webauthn_available = @user&.webauthn_credentials&.any? && !@login.authenticated_with_webauthn
     @totp_available = @user&.totp.present? && !@login.authenticated_with_totp
+    @backup_code_available = @user&.backup_codes_enabled? && !@login.authenticated_with_backup_code
   end
 
   def set_return_to
