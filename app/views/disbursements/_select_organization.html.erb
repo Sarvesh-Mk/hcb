@@ -1,7 +1,7 @@
 <%# locals: (form:, field_name:, disabled:, events:, default_event:, lazy_load_balances: false, sending: false, receiving: false, allow_custom_events: false) %>
 
 <div class="field" data-controller="organization-select">
-    <%= form.label field_name, sending ? "From" : "To" %>
+    <%= form.label field_name, sending ? "To" : "From" %>
     <select name="disbursement[<%= field_name %>]" id="disbursement_<%= field_name %>" <%= "disabled" if disabled %> class="bg-[transparent] dark:bg-darkless input input--select flex items-center select-none cursor-pointer disabled:cursor-default" data-organization-select-target="dropdown">
         <option value>Select one...</option>
         <option <%= "default" if default_event.present? %> value="<%= default_event.public_id if default_event.present? %>"><%= default_event.name if default_event.present? %></option>
